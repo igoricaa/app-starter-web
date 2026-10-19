@@ -1,16 +1,15 @@
-// Applies drizzle/ to DATABASE_URL_UNPOOLED, Neon's direct URL. The advisory lock belongs to the
-// session, which a pooler in transaction mode doesn't keep, so a pooled host is refused.
+// Applies drizzle/ to DATABASE_URL_UNPOOLED, Neon's direct URL (or a local server), under an
+// advisory lock. scripts/guard.ts's migrationRefusal says which URLs it accepts.
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
-import { databaseHost, isPooled } from "./guard";
+import { migrationRefusal } from "./guard";
 
-const url = process.env.DATABASE_URL_UNPOOLED;
-if (!url) throw new Error("Set DATABASE_URL_UNPOOLED, the direct (unpooled) URL.");
-if (isPooled(databaseHost(url))) throw new Error("DATABASE_URL_UNPOOLED is a pooled host.");
+const reason = migrationRefusal(process.env);
+if (reason) throw new Error(`Refusing to migrate: ${reason}`);
 
-const client = new Client({ connectionString: url });
+const client = new Client({ connectionString: process.env.DATABASE_URL_UNPOOLED });
 await client.connect();
 try {
   // Concurrent deploys wait here, so migrations apply one at a time. Ending the session unlocks.

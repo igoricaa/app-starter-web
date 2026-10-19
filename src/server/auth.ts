@@ -8,6 +8,7 @@ import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Context, Effect, Layer, Option, Redacted, Schema } from "effect";
 import { Pool } from "pg";
 import { Resend } from "resend";
+import * as z from "zod";
 import { authConfig, databaseUrl } from "./config";
 import { Unauthenticated } from "./errors";
 import * as schema from "./schema";
@@ -28,8 +29,9 @@ const limitedPaths: Record<string, keyof typeof limits> = {
   "/email-otp/send-verification-otp": "send",
   "/sign-in/email-otp": "verify",
 };
-// Looser than Better Auth's own check, so every address it accepts is counted.
-const looksLikeEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+// Better Auth's own check, on the lowercased address, so the global cap counts exactly the
+// addresses it accepts.
+const isValidEmail = (email: string) => z.email().safeParse(email.toLowerCase()).success;
 
 function makeAuth(db: NodePgDatabase, config: AuthConfig) {
   const usesFixedCode = (email: string) =>
@@ -64,7 +66,7 @@ function makeAuth(db: NodePgDatabase, config: AuthConfig) {
         const email: unknown = ctx.body?.email;
         if (!kind || typeof email !== "string" || usesFixedCode(email)) return;
         // Only a sign-in code to a valid address can create an account.
-        const signUp = kind === "send" && ctx.body?.type === "sign-in" && looksLikeEmail(email);
+        const signUp = kind === "send" && ctx.body?.type === "sign-in" && isValidEmail(email);
         if (!(await allowAttempt(db, kind, email.toLowerCase(), signUp))) {
           throw new APIError("TOO_MANY_REQUESTS", {
             message: "Too many attempts. Wait a few minutes and try again.",
@@ -91,6 +93,9 @@ function makeAuth(db: NodePgDatabase, config: AuthConfig) {
     },
     plugins: [
       emailOTP({
+        // Keyed by BETTER_AUTH_SECRET, which previews don't share, so a preview's copy of
+        // production's codes is unusable. ("hashed" is unsalted SHA-256: six digits reverse at once.)
+        storeOTP: "encrypted",
         // Returning undefined falls back to a random code; expiry and attempt limits apply either way.
         generateOTP: ({ email }) =>
           usesFixedCode(email) ? Option.getOrUndefined(config.testOtpCode) : undefined,

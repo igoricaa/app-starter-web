@@ -42,18 +42,22 @@ export const postAuth = (path: string, body: object, headers?: Headers) =>
     ),
   );
 
-// Issues a sign-in code through the real generation hook (no mail), then signs in over HTTP with
-// `otp`, or with the issued code when `otp` is omitted. `signUp` adds fields to the request body.
+// Issues a sign-in code through the real generation hook (no mail, no limits) and returns it.
+export const issueCode = (email: string) =>
+  Auth.Auth.use((auth) =>
+    Effect.promise(() =>
+      auth.api.createVerificationOTP({
+        body: { email, type: "sign-in" },
+        headers: { host: new URL(origin).host },
+      }),
+    ),
+  );
+
+// Signs in over HTTP with `otp`, or with a newly issued code when `otp` is omitted. `signUp` adds
+// fields to the request body.
 export const signIn = (email: string, otp?: string, signUp: object = {}) =>
   Effect.gen(function* () {
-    const issued = yield* Auth.Auth.use((auth) =>
-      Effect.promise(() =>
-        auth.api.createVerificationOTP({
-          body: { email, type: "sign-in" },
-          headers: { host: new URL(origin).host },
-        }),
-      ),
-    );
+    const issued = yield* issueCode(email);
     return yield* postAuth("/sign-in/email-otp", { ...signUp, email, otp: otp ?? issued });
   });
 
