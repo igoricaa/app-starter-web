@@ -1,0 +1,32 @@
+name: E2E
+
+# Vercel reports each deployment here, including a branch pushed before its PR opens.
+on: deployment_status
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    if: >-
+      github.event.deployment_status.state == 'success' &&
+      github.event.deployment.environment == 'Preview'
+    # A newer deployment of the same branch supersedes this one.
+    concurrency:
+      group: e2e-${{ github.event.deployment.ref }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.deployment.sha }}
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile && bunx playwright install --with-deps chromium
+      - run: bunx playwright test tests/e2e/sign-in.spec.ts
+        env:
+          CI: true
+          BASE_URL: ${{ github.event.deployment_status.environment_url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          TEST_OTP_CODE: ${{ secrets.TEST_OTP_CODE }}

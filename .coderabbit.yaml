@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+language: en-US
+reviews:
+  profile: chill
+  high_level_summary: false
+  poem: false
+  auto_review:
+    enabled: true
+    labels: ["coderabbit"]
+  path_filters:
+    - "!**/_generated/**"
+    - "!**/routeTree.gen.ts"
+    - "!bun.lock"
+    - "!drizzle/**"
+    - "!.repos/**"
+    - "!.agents/**"
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+knowledge_base:
+  code_guidelines:
+    filePatterns: ["AGENTS.md", "docs/internals/**/*.md"]

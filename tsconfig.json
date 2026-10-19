@@ -1,0 +1,21 @@
+{
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules", ".output", ".repos"],
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "types": ["vite/client", "node"],
+    "paths": { "~/*": ["./src/*"] },
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  }
+}
