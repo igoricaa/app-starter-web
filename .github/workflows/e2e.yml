@@ -11,11 +11,12 @@ jobs:
     if: >-
       github.event.deployment_status.state == 'success' &&
       github.event.deployment.environment == 'Preview'
-    # A newer deployment of the same branch supersedes this one.
+    # Vercel's deployment ref is the commit SHA: a redeploy of the same commit supersedes this run.
     concurrency:
       group: e2e-${{ github.event.deployment.ref }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
