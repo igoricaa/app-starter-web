@@ -11,7 +11,7 @@ reviews:
     - "!**/_generated/**"
     - "!**/routeTree.gen.ts"
     - "!bun.lock"
-    - "!drizzle/**"
+    - "!**/drizzle/**"
     - "!.repos/**"
     - "!.agents/**"
   pre_merge_checks:

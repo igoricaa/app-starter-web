@@ -1,5 +1,5 @@
 // Vitest global setup, trimmed from Hive. Without TEST_DATABASE_URL (CI sets one) it starts a
-// throwaway PostgreSQL 17 cluster for this run and stops it at the end. Either way it migrates a
+// throwaway PostgreSQL 18 cluster for this run and stops it at the end. Either way it migrates a
 // template database once; each test layer gets its own copy.
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -43,7 +43,7 @@ const freePort = () =>
 export default async function setup() {
   let stop = () => {};
   if (!process.env.TEST_DATABASE_URL) {
-    const bin = process.env.PG_BIN ?? "/opt/homebrew/opt/postgresql@17/bin";
+    const bin = process.env.PG_BIN ?? "/opt/homebrew/opt/postgresql@18/bin";
     const directory = mkdtempSync(join(tmpdir(), "app-test-postgres-"));
     const data = join(directory, "data");
     const pg = (tool: string, args: string[]) =>
@@ -56,7 +56,7 @@ export default async function setup() {
     } catch (error) {
       rmSync(directory, { recursive: true, force: true });
       throw new Error(
-        `Could not start PostgreSQL 17 from ${bin}: brew install postgresql@17, set PG_BIN, or set TEST_DATABASE_URL.`,
+        `Could not start PostgreSQL 18 from ${bin}: brew install postgresql@18, set PG_BIN, or set TEST_DATABASE_URL.`,
         { cause: error },
       );
     }

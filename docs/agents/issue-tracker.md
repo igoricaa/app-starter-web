@@ -1,6 +1,6 @@
 # Issue tracker: Linear
 
-Specs and tickets live in Linear, team `TEAM_KEY`, project `PROJECT_NAME`. Use the Linear MCP tools (`save_issue`, `get_issue`, `list_issues`, `save_comment`, `list_issue_labels`, `create_issue_label`). `/app-setup` fills in the team and project.
+Specs and tickets live in Linear, in the team and project named in `AGENTS.md` (Agent skills → Issue tracker). Use the Linear MCP tools (`save_issue`, `get_issue`, `list_issues`, `save_comment`, `list_issue_labels`, `create_issue_label`).
 
 ## Conventions
 

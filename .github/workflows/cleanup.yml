@@ -1,0 +1,30 @@
+name: Cleanup
+
+# Vercel-managed Neon deletes a preview's database branch only with its last Vercel deployment,
+# months later, and the free plan caps branches. NEON_API_KEY is scoped to this Neon project.
+on:
+  pull_request:
+    types: [closed]
+
+permissions: {}
+
+jobs:
+  neon-branch:
+    # Forks get no secrets.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Delete preview/<head branch>, if it exists
+        # Unlike the default, `bash` sets pipefail, so an API error fails the step.
+        shell: bash
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          BRANCHES: https://console.neon.tech/api/v2/projects/${{ vars.NEON_PROJECT_ID }}/branches
+          BRANCH: preview/${{ github.head_ref }}
+        run: |
+          neon() { curl -fsS -H "Authorization: Bearer $NEON_API_KEY" "$@"; }
+          id=$(neon "$BRANCHES" | jq -r --arg name "$BRANCH" '.branches[] | select(.name == $name) | .id')
+          if [ -z "$id" ]; then echo "No branch $BRANCH"; exit 0; fi
+          neon -X DELETE "$BRANCHES/$id" >/dev/null
+          echo "Deleted $BRANCH"
