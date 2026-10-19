@@ -93,8 +93,9 @@ export const otpAttempt = pgTable(
     newAddress: boolean("new_address").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
+  // The per-address counts filter on email and a time window; the cleanup on created_at alone.
   (table) => [
-    index("otp_attempt_email_idx").on(table.email),
+    index("otp_attempt_email_created_at_idx").on(table.email, table.createdAt),
     index("otp_attempt_created_at_idx").on(table.createdAt),
   ],
 );
