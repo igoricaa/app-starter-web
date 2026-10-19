@@ -36,7 +36,7 @@ Tiny tweaks (copy, spacing, a label) go straight to `main`, with no PR.
 3. **Breaking open tabs.** Users keep the old frontend open after a deploy, so a server function's input and return value change only additively. Removals and renames go in a later PR.
 4. **Narrowing data in one step.** It takes three PRs: widen the schema, backfill, then narrow, and only after the backfill has completed. Igor takes a backup first.
 5. **Editing an applied migration.** Change `src/server/schema.ts`, run `bun run db:generate`, and commit the new folder in `drizzle/`.
-6. **Migrating dev from a worktree.** Worktrees share the Neon `dev` branch through `.env.local`. Builders test with `bun run test`, which starts its own PostgreSQL; only `/build`'s integration check runs `bun run db:migrate` against dev.
+6. **Using dev from a worktree.** Worktrees share the Neon `dev` branch through `.env.local`. Builders never migrate it or run the dev server; they test with `bun run test`, which starts its own PostgreSQL. The one exception is `/build`'s integration check, which runs `bun run db:migrate` and `bun run dev` in the batch's worktree.
 
 ## Hit every surface
 
@@ -53,19 +53,19 @@ The most common defect is a change that works on the path you tested and is miss
 ## Dev servers
 
 - `bun run setup` installs dependencies and checks out Effect's source in `.repos/effect`. New worktrees run it from `t3.json`, and get `.env.local` and `.repos` linked from the main checkout.
-- `bun run dev` runs Vite on port 3000, against the Neon `dev` branch in `.env.local`. Only Igor or the integration check runs it.
+- `bun run dev` runs Vite on port 3000, against the Neon `dev` branch in `.env.local`. Only Igor or the integration check runs it. It deletes `src/routeTree.gen.ts` first, to work around a nitro beta bug (see `docs/internals/effect-services.md`).
 - Stop what you started, by the PID you captured. Never kill by name or pattern.
 
 ## Test data
 
 - `bun run seed` creates the seeded accounts (see `src/server/auth.ts`). It refuses wherever `TEST_OTP_CODE` is unset, which includes production.
-- Sign in as a seeded account with the code in `TEST_OTP_CODE`. It works only in dev and previews, and only for seeded addresses.
+- Sign in as a seeded account with the code in `TEST_OTP_CODE`. It works only in dev and previews, and only for seeded addresses. Use it without printing it: `TEST_OTP_CODE="$(sed -n 's/^TEST_OTP_CODE=//p' .env.local)" bunx playwright …`.
 - Each branch's previews share one Neon database branch, migrated and seeded on every deploy.
 
 ## Verifying
 
-- **Smallest proof:** run the tests that cover what you changed, plus `bunx oxlint --type-aware <files>` and `bunx tsc --noEmit`. CI runs the full suite (`bun run check`'s steps, then the preview e2e).
-- **Tests need PostgreSQL 17** (`brew install postgresql@17`). They start a throwaway cluster, and each test layer gets a fresh copy of the migrated database.
+- **Smallest proof:** run the tests that cover what you changed, plus `bunx oxfmt <files>`, `bunx oxlint --type-aware <files>` and `bunx tsc --noEmit`. CI runs the full suite (`bun run check`'s steps, then the preview e2e).
+- **Tests need PostgreSQL 18**, Neon's version (`brew install postgresql@18`). They start a throwaway cluster, and each test layer gets a fresh copy of the migrated database.
 - **Backend changes** ship with focused tests at the service boundary: who may call it, whose data it touches, and the error codes. Copy `src/server/AccountService.test.ts`.
 - **Test meaningful behaviour.** No static-render tests, no tests that mirror the implementation, no snapshots.
 - **End-to-end:** one Playwright test (sign-in). Add one only for a flow whose breaking would really hurt.
@@ -80,7 +80,7 @@ The most common defect is a change that works on the path you tested and is miss
   - the one-way or two-way door line;
   - the Linear links;
   - the models that built and reviewed it.
-- **Merging deploys production.** CI green means verify, the Vercel build and the preview e2e, all for the head SHA.
+- **Merging deploys production.** CI green means verify, the Vercel build and the preview e2e, all for the head SHA. Confirm e2e itself passed, since it appears a few seconds after Vercel's success: `gh pr checks <n> --json name,bucket --jq '.[] | select(.name == "e2e") | .bucket'` prints `pass`.
 
 ## Documentation
 
@@ -107,7 +107,7 @@ Most changes need no doc change. Agents can read the code.
 - **Deploys:** Vercel runs `scripts/vercel-build.sh` on every deploy.
   - It refuses a production build from any branch but `main`, `TEST_OTP_CODE` in production, and a preview whose database is production's or that has `RESEND_API_KEY` (`scripts/guard.ts`).
   - It migrates under an advisory lock, so concurrent deploys apply migrations one at a time; previews are then seeded; then it builds.
-  - A preview gets its branch's own Neon database branch. Production uses the main one.
+  - A preview gets its branch's own Neon database branch, deleted when its PR closes (`.github/workflows/cleanup.yml`). Production uses the main one.
 
 ## Where code lives
 
@@ -145,11 +145,11 @@ Every dispatch pins its model and effort. Never Haiku. At most 6 Opus agents at 
 | Discovery and spec session | Opus 5.5 | xhigh |
 | Spec challenge: new app or high-stakes / other specs / small features | Astra + Opus 5.5 / Astra / none | xhigh |
 | Build coordinator (`/build`) | Opus 5.5 | high |
-| Backend builder | Opus 5.5 | medium; high for really complex work |
+| Backend builder (and pieces with both backend and UI) | Opus 5.5 | medium; high for really complex work |
 | Design session (`/design`), UI foundation | Opus 5.5 | high |
 | Screens and views | Sonnet 5.5 | medium |
 | Ordinary review | Sol | high |
-| Important review: public contracts, substantial behaviour, integrations | Sol | xhigh |
+| Important review: changed or removed arguments or returns of existing functions, APIs other apps consume, substantial behaviour, integrations | Sol | xhigh |
 | High-stakes review: money, authorization and tenancy, migrations and deletion, concurrency, billing webhooks | Sol + Opus 5.5 | xhigh |
 | UI review in the browser, once per batch | Opus 5.5 | high |
 | Research | Sol | medium |
@@ -162,7 +162,7 @@ Consequence decides the review tier, never size or a "UI" label. A one-line perm
 
 ### Issue tracker
 
-Linear: specs are parent issues, and tickets are sub-issues with blocking links. See `docs/agents/issue-tracker.md`.
+Linear team TEAM_KEY, project PROJECT_NAME: specs are parent issues, and tickets are sub-issues with blocking links. See `docs/agents/issue-tracker.md`.
 
 ### Domain docs
 

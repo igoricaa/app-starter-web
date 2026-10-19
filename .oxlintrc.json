@@ -7,12 +7,7 @@
   },
   "ignorePatterns": ["src/routeTree.gen.ts", ".repos/**", ".agents/**", ".claude/**"],
   "rules": {
-    "shadcn/no-restyle": [
-      "error",
-      {
-        "allow": ["layout"]
-      }
-    ],
+    "shadcn/no-restyle": "error",
     "shadcn/no-raw-colors": "error",
     "shadcn/no-arbitrary-values": "error",
     "shadcn/no-inline-styles": "error",

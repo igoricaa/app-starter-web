@@ -24,22 +24,28 @@ Committed pieces are done. Uncommitted pieces get a fresh review.
 
 - Turn the tickets into **pieces**: coherent work for one builder, covering one or more tickets.
 - Group the pieces into **PR batches**.
-- **High-stakes work** (money, authorization and tenancy, migrations and deletion, concurrency, billing webhooks) gets its own PR. So does every data change.
+- **High-stakes work** (money, authorization and tenancy, migrations and deletion, concurrency, billing webhooks) gets its own PR.
+- **So does every data change:** a backfill, a migration, narrowing, a delete, or changing what an existing field means. Adding an optional field isn't a data change.
 - Never make a huge PR.
 - Show the owner the grouping in a few lines, then start; don't wait for approval unless something is ambiguous.
 - Move tickets to In Progress when work starts.
 
 ## 2. Build
 
-- **Dispatch.** One builder per piece, in its own worktree, with the model and effort from the routing table. Pin both on every dispatch.
-  - Claude builders: the Agent tool with `isolation: "worktree"`.
-  - Codex models: T3 `delegate_task` with `isolation: "worktree"`.
+- **Worktrees.** You create one per piece, so it works the same in every harness:
+  1. `git worktree add ../<app>-wt/<slug> -b <type>/<slug> main`, with `<type>` one of `feat`, `fix` or `chore`;
+  2. copy `.env.local` into it;
+  3. run `bun install` there.
+- **Dispatch.** One builder per piece. Give it the worktree path, and the model and effort from the routing table. Pin both on every dispatch.
+  - Claude builders: the Agent tool, working in that path.
+  - Codex models: T3 `delegate_task`, told the path.
+  - A piece with both backend and UI goes to the backend builder, unless it's mostly screens.
 - **Parallel or serial.** Builders run in parallel only when they share no files or resources. Pieces that touch the schema (`convex/schema.ts` or `src/server/schema.ts`) run one after another.
 
 **The builder brief** (keep it about this size):
 
 ```
-Build <piece> in this worktree. Do not commit.
+Build <piece> in the worktree at <path> (work only there). Do not commit.
 What: <ticket text: behaviour, acceptance criteria, how to prove it; spec excerpt if needed>
 Design: <frame, or "follow the existing screens and /_system">   (UI only)
 Rules: AGENTS.md, plus <the docs/internals file for this area>. Copy the shape of the reference slice.
@@ -53,10 +59,10 @@ Report: what you changed (files), what you proved (commands and results), anythi
 
 Each piece gets one review, routed by consequence using the routing table's tiers. Size and a "UI" label never decide the tier.
 - **Ordinary:** Sol high.
-- **Important** (public contracts, substantial behaviour changes, integrations): Sol xhigh.
+- **Important:** changed or removed arguments or returns of existing functions, APIs other apps consume, substantial behaviour changes, integrations. Sol xhigh. A new function alone is ordinary.
 - **High-stakes:** Sol xhigh and Opus xhigh, in parallel.
 
-Sol runs through T3 `delegate_task`, read-only, at a pinned effort. **If T3 is unreachable, stop and tell the owner. Never swap a model silently.**
+Sol runs through T3 `delegate_task` (`mode: "wait"`, `timeoutMs: 1800000`), read-only, at a pinned effort. **If T3 is unreachable, stop and tell the owner. Never swap a model silently.**
 
 **The reviewer brief:**
 
@@ -87,13 +93,17 @@ If you can't read the target, answer BLOCKED.
 
 ## 4. Commit
 
-You commit, in the worktree, with the Linear key in the message (`feat(account): … (APP-12)`). Builders never commit.
+You commit, in the worktree, with the Linear key in the message (`feat(account): … (APP-12)`). Without a tracker, leave the key out. Builders never commit.
 
 ## 5. Integration check
 
 1. Merge the batch's pieces onto one branch and run typecheck.
 2. Walk the batch's acceptance criteria.
-   - **UI:** an Opus high subagent clicks through the changed flows in a browser, once per batch. It runs against the dev backend with the seed data, at 1440 and 390, and reports what it actually checked. Only this step pushes to the dev deployment.
+   - **UI:** an Opus high subagent clicks through the changed flows in a browser, once per batch.
+     - It runs `bun run dev` in the batch's worktree, against the dev backend with the seed data. This is the only `convex dev` during `/build`.
+     - It checks at 1440 and 390, and reports what it actually checked.
+     - It reads the test code without printing it: `TEST_OTP_CODE="$(bunx convex env get TEST_OTP_CODE)" bunx playwright …`.
+     - It stops the server by the PID it captured.
    - **Backend flows** are proven by their seam tests.
 3. Code that resolves an integration conflict gets reviewed.
 4. Run the full build and tests locally only when CI is down.
@@ -103,16 +113,17 @@ You commit, in the worktree, with the Linear key in the message (`feat(account):
 - **Opening it:** `gh pr create` with a conventional, plain-language title that includes the Linear key. Link the PR with T3 `link_pull_request` when it's available.
 - **The body:**
   - the problem in a sentence or two, and the fix;
-  - before/after screenshots for UI, uploaded to GitHub, never committed;
+  - before/after screenshots when the look changed, never committed. Host them in a secret gist: `gh gist create`, then clone it and push the images with `-c credential.helper='!gh auth git-credential'`. Link the raw URLs;
   - the one-way or two-way door line, e.g. "Two-way door: a flag flip reverts it", or "One-way door: drops column X";
   - the Linear issue links;
   - who built and reviewed it, e.g. "Built by Opus 5.5 high; reviewed by Sol high (2 findings, both fixed)";
+  - follow-ups, e.g. a later removal the additive rule requires: as Linear issues, or a "Follow-ups" line when there's no tracker;
   - for high-stakes PRs, one review line, e.g. "Sol xhigh + Opus xhigh: 6 findings, 5 fixed, 1 dismissed (reason)".
 - **CodeRabbit:** add the `coderabbit` label when the PR has important or high-stakes work, or is medium or bigger (real code across several files or more than one area; generated files and lockfiles don't count).
   - Triage its comments like any other finding.
   - Ask for a re-review only when behaviour changed.
-  - It's never required. If it doesn't report, the PR says so.
-- **CI green means:** verify, the Vercel build, and the preview e2e, all for the head SHA. Use `gh pr checks <n> --watch`.
+  - It's never required. If it hasn't reported by the time CI is green, the PR says so and you go on.
+- **CI green means:** verify, the Vercel build, and the preview e2e, all for the head SHA. Watch with `gh pr checks <n> --watch`. Then confirm e2e itself passed, because it appears a few seconds after Vercel reports success: `gh pr checks <n> --json name,bucket --jq '.[] | select(.name == "e2e") | .bucket'` must print `pass`.
 
 ## 7. Merge (this deploys production)
 
@@ -121,11 +132,17 @@ You commit, in the worktree, with the Linear key in the message (`feat(account):
 - **High-stakes:** the owner merges.
 - **Data changes:**
   - the owner takes a backup first (Convex dashboard or Neon), and the PR states the undo;
+  - an additive optional field needs neither;
   - narrowing takes three PRs (widen, migrate, narrow), and you narrow only after the migration has completed;
   - a public function's arguments and return value change only additively.
 - **CI failing for infrastructure reasons** (e.g. billing): merge only on the owner's agreement, after the full suite passes locally.
-- **How:** squash merge, `gh pr merge <n> --squash --delete-branch`. Then remove the worktrees.
-- **After merge:** one quick check that production is up and the change works (open the production URL, sign in if needed).
+- **How:** `gh pr merge <n> --squash --delete-branch --subject "<PR title> (#<n>)" --body "Co-Authored-By: <the builder model's attribution line>"`. It also removes the checked-out worktree; then run `git worktree prune`.
+- **After merge:** one quick production check:
+  - the deployment for the merge SHA is Ready;
+  - `/sign-in` and `/api/auth/ok` return 200;
+  - the push CI run on `main` passed.
+
+  The feature itself was proven on the preview.
 
 ## 8. Stop
 

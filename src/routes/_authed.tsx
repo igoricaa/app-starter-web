@@ -22,9 +22,11 @@ function AuthedLayout() {
       <nav className="mb-8 flex items-center gap-4 text-sm">
         <Link to="/">Home</Link>
         <Link to="/account">Account</Link>
-        <Button variant="outline" size="sm" className="ml-auto" onClick={signOut}>
-          Sign out
-        </Button>
+        <div className="ml-auto">
+          <Button variant="outline" size="sm" onClick={signOut}>
+            Sign out
+          </Button>
+        </div>
       </nav>
       <Outlet />
     </div>
