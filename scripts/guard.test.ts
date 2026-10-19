@@ -1,10 +1,12 @@
 import { assert, describe, it } from "vitest";
-import { refusal } from "./guard";
+import { migrationRefusal, refusal } from "./guard";
 
 const production = "ep-prod-123.c-2.eu-central-1.aws.neon.tech";
 const preview = "ep-preview-456.c-2.eu-central-1.aws.neon.tech";
 const pooled = (host: string) => host.replace(/^([^.]+)/, "$1-pooler");
-const url = (host: string, query = "") => `postgresql://user:password@${host}/neondb${query}`;
+const query = "?channel_binding=require&sslmode=require";
+const url = (host: string, rest = query, password = "password") =>
+  `postgresql://neondb_owner:${password}@${host}/neondb${rest}`;
 const previewEnv = (databaseUrl: string) => ({
   VERCEL_ENV: "preview",
   PRODUCTION_DATABASE_HOST: production,
@@ -13,28 +15,57 @@ const previewEnv = (databaseUrl: string) => ({
 });
 
 describe("the build guard", () => {
-  it("refuses a preview whose effective host is production's", () => {
+  it("lets a preview on its own branch through, in the shape Vercel's Neon integration sets", () => {
+    const env = { ...previewEnv(url(pooled(preview))), PGHOST: pooled(preview) };
+    assert.isUndefined(refusal(env));
+    assert.isUndefined(refusal({ ...env, DATABASE_URL: url(pooled(preview), "?sslmode=require") }));
+    assert.match(refusal({ ...env, RESEND_API_KEY: "re_123" })!, /RESEND_API_KEY/);
+  });
+
+  it("refuses a preview URL that reaches production, or might", () => {
     for (const databaseUrl of [
       url(pooled(production)),
-      url(pooled(preview), `?host=${production}`),
+      url(production),
+      url(`${pooled(production)}.`),
       url(production.toUpperCase()),
       url(production.replace("ep-", "%65p-")),
+      url(pooled(preview), `${query}&options=endpoint%3Dep-prod-123`),
+      url(pooled(preview), "?options=endpoint%3Dep-prod-123"),
+      url(pooled(preview), query, "endpoint=ep-prod-123;password"),
+      url(pooled(preview), query, "endpoint%3Dep-prod-123%24password"),
+      url(pooled(preview), `?host=${production}`),
       url("", `?host=${encodeURIComponent(pooled(production))}`),
+      url("3.125.57.42", `?options=endpoint%3Dep-prod-123`),
+      url("3.125.57.42"),
+      url(`${pooled(preview)}:6543`),
       // No host: pg would use PGHOST.
       url(""),
+      url(`${preview}.evil.example`),
+      "not a url",
+      "",
     ]) {
-      assert.strictEqual(
-        refusal(previewEnv(databaseUrl)),
-        "this preview's database is production's.",
+      assert.isDefined(refusal(previewEnv(databaseUrl)), databaseUrl);
+      assert.isDefined(
+        refusal({ ...previewEnv(url(pooled(preview))), DATABASE_URL_UNPOOLED: databaseUrl }),
         databaseUrl,
       );
     }
+    assert.strictEqual(
+      refusal(previewEnv(url(pooled(production)))),
+      "this preview's database is production's.",
+    );
   });
 
-  it("lets a preview on its own branch through, without the Resend key", () => {
+  it("refuses a preview with PGOPTIONS or PGHOSTADDR, or no Neon production host", () => {
     const env = previewEnv(url(pooled(preview)));
-    assert.isUndefined(refusal(env));
-    assert.match(refusal({ ...env, RESEND_API_KEY: "re_123" })!, /RESEND_API_KEY/);
+    assert.match(refusal({ ...env, PGOPTIONS: "endpoint=ep-prod-123" })!, /PGOPTIONS/);
+    assert.match(refusal({ ...env, PGHOSTADDR: "3.125.57.42" })!, /PGHOSTADDR/);
+    for (const host of [undefined, `${production}.`, "3.125.57.42"]) {
+      assert.match(
+        refusal({ ...env, PRODUCTION_DATABASE_HOST: host })!,
+        /PRODUCTION_DATABASE_HOST/,
+      );
+    }
   });
 
   it("requires the direct URL, and production from main without TEST_OTP_CODE", () => {
@@ -44,5 +75,38 @@ describe("the build guard", () => {
     assert.match(refusal({ ...env, DATABASE_URL_UNPOOLED: "" })!, /DATABASE_URL_UNPOOLED/);
     assert.match(refusal({ ...env, VERCEL_GIT_COMMIT_REF: "feature" })!, /only from main/);
     assert.match(refusal({ ...env, TEST_OTP_CODE: "424242" })!, /TEST_OTP_CODE/);
+  });
+});
+
+describe("the migration guard", () => {
+  it("accepts a direct Neon URL or a local server", () => {
+    for (const direct of [
+      url(preview),
+      "postgresql://postgres@localhost:5432/postgres",
+      "postgresql://postgres@127.0.0.1:61234/app_template",
+    ]) {
+      assert.isUndefined(migrationRefusal({ DATABASE_URL_UNPOOLED: direct, PGHOST: "x" }), direct);
+    }
+  });
+
+  it("refuses a pooled, hostless, rerouted or unparseable URL, and PGOPTIONS", () => {
+    for (const direct of [
+      undefined,
+      url(pooled(preview)),
+      "postgresql://u:p@/db",
+      url("", `?host=${preview}`),
+      url(preview, "?options=endpoint%3Dep-prod-123"),
+      url("localhost", `?host=${pooled(preview)}`),
+      "not a url",
+    ]) {
+      assert.isDefined(
+        migrationRefusal({ DATABASE_URL_UNPOOLED: direct, PGHOST: pooled(preview) }),
+        direct,
+      );
+    }
+    assert.match(
+      migrationRefusal({ DATABASE_URL_UNPOOLED: url(preview), PGOPTIONS: "x" })!,
+      /PGOPTIONS/,
+    );
   });
 });

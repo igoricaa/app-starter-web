@@ -1,17 +1,21 @@
 name: Cleanup
 
 # Vercel-managed Neon deletes a preview's database branch only with its last Vercel deployment,
-# months later, and the free plan caps branches. NEON_API_KEY is scoped to this Neon project.
+# months later, and the free plan caps branches.
+# pull_request_target runs main's copy of this file, even for a PR closed with conflicts, and never
+# checks out the PR's code. NEON_API_KEY (scoped to this Neon project) lives in the neon-cleanup
+# environment, which only main may use, so a workflow added on a PR branch can't read it.
 on:
-  pull_request:
+  pull_request_target:
     types: [closed]
 
 permissions: {}
 
 jobs:
   neon-branch:
-    # Forks get no secrets.
+    # A fork's branch names could match ours.
     if: github.event.pull_request.head.repo.full_name == github.repository
+    environment: neon-cleanup
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -21,7 +25,7 @@ jobs:
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           BRANCHES: https://console.neon.tech/api/v2/projects/${{ vars.NEON_PROJECT_ID }}/branches
-          BRANCH: preview/${{ github.head_ref }}
+          BRANCH: preview/${{ github.event.pull_request.head.ref }}
         run: |
           neon() { curl -fsS -H "Authorization: Bearer $NEON_API_KEY" "$@"; }
           id=$(neon "$BRANCHES" | jq -r --arg name "$BRANCH" '.branches[] | select(.name == $name) | .id')

@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { desc, eq } from "drizzle-orm";
 import { Cause, Effect, Exit } from "effect";
-import { postAuth, sessionHeaders, signIn, testApp } from "../../tests/app";
+import { issueCode, postAuth, sessionHeaders, signIn, testApp } from "../../tests/app";
 import { seed, seededAccounts } from "./auth";
 import { Db } from "./Db";
 import { otpAttempt, user, verification } from "./schema";
@@ -13,7 +13,7 @@ const sendCode = (email: string, type = "sign-in") =>
   Effect.map(postAuth("/email-otp/send-verification-otp", { email, type }), (r) => r.status);
 const guess = (email: string, otp: string) =>
   Effect.map(postAuth("/sign-in/email-otp", { email, otp }), (r) => r.status);
-// The stored `code:attempts` value.
+// The stored `<encrypted code>:<attempts>` value.
 const storedCode = (email: string) =>
   Effect.gen(function* () {
     const db = yield* Db;
@@ -66,10 +66,12 @@ describe("code limits", () => {
     Effect.gen(function* () {
       const victim = "victim@example.test";
       for (let i = 0; i < 3; i++) assert.strictEqual(yield* sendCode(victim), 200);
-      const code = (yield* storedCode(victim))!.split(":")[0]!;
+      // Codes are stored encrypted; this one comes back from issuing it.
+      const code = yield* issueCode(victim);
+      assert.notInclude(yield* storedCode(victim), code);
       for (let i = 0; i < 3; i++) assert.strictEqual(yield* guess(victim, "000000"), 400);
       const spent = yield* storedCode(victim);
-      assert.strictEqual(spent, `${code}:3`);
+      assert.match(spent!, /:3$/);
 
       assert.strictEqual(yield* sendCode(victim.toUpperCase()), 429);
       assert.strictEqual(yield* storedCode(victim), spent);
@@ -121,7 +123,16 @@ describe("code limits", () => {
         )
         .pipe(Effect.orDie);
 
-      assert.strictEqual(yield* sendCode("not-an-email"), 400);
+      // Better Auth refuses each of these; a looser check would have counted them.
+      for (const invalid of [
+        "not-an-email",
+        "bad0..name@example.test",
+        "a@b..c",
+        ".a@x.y",
+        "a@-x.y",
+      ]) {
+        assert.strictEqual(yield* sendCode(invalid), 400, invalid);
+      }
       assert.strictEqual(yield* sendCode("unknown@example.test", "email-verification"), 200);
       assert.strictEqual(yield* sendCode("last@example.test"), 200);
       assert.strictEqual(yield* sendCode("one-more@example.test"), 429);
