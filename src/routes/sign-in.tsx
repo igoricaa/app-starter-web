@@ -67,7 +67,7 @@ function SignIn() {
           <FieldError>{error}</FieldError>
         </Field>
         <Button type="submit" disabled={!hydrated || pending}>
-          {codeSent ? "Sign in" : "Send code"}
+          {codeSent ? "Sign in" : "Email me a code"}
         </Button>
       </form>
     </main>
