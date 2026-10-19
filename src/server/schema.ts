@@ -100,5 +100,9 @@ export const otpAttempt = pgTable(
   ],
 );
 
+// Better Auth's ids: 32 letters and digits. Decoding one first means a malformed id never reaches
+// a query.
+export const UserId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9]{32}$/));
+
 // `user.name`, trimmed. Better Auth creates accounts without this check, so auth.ts applies it too.
 export const DisplayName = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(50));

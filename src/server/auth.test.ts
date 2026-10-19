@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { desc, eq } from "drizzle-orm";
 import { Cause, Effect, Exit } from "effect";
-import { postAuth, signIn, testApp } from "../../tests/app";
+import { postAuth, sessionHeaders, signIn, testApp } from "../../tests/app";
 import { seed, seededAccounts } from "./auth";
 import { Db } from "./Db";
 import { otpAttempt, user, verification } from "./schema";
@@ -9,11 +9,8 @@ import { otpAttempt, user, verification } from "./schema";
 const FIXED_CODE = "424242";
 const seeded = seededAccounts[0]!.email;
 
-const sendCode = (email: string) =>
-  Effect.map(
-    postAuth("/email-otp/send-verification-otp", { email, type: "sign-in" }),
-    (r) => r.status,
-  );
+const sendCode = (email: string, type = "sign-in") =>
+  Effect.map(postAuth("/email-otp/send-verification-otp", { email, type }), (r) => r.status);
 const guess = (email: string, otp: string) =>
   Effect.map(postAuth("/sign-in/email-otp", { email, otp }), (r) => r.status);
 // The stored `code:attempts` value.
@@ -29,12 +26,13 @@ const storedCode = (email: string) =>
       .pipe(Effect.orDie);
     return row?.value;
   });
-const nameOf = (email: string) =>
+const userRow = (email: string) =>
   Effect.gen(function* () {
     const db = yield* Db;
-    const [row] = yield* db.select({ name: user.name }).from(user).where(eq(user.email, email));
-    return row?.name;
+    const [row] = yield* db.select().from(user).where(eq(user.email, email));
+    return row;
   }).pipe(Effect.orDie);
+const nameOf = (email: string) => Effect.map(userRow(email), (row) => row?.name);
 
 describe("fixed OTP", () => {
   it.effect("signs in a seeded account when TEST_OTP_CODE is set; the seed re-runs safely", () =>
@@ -108,17 +106,58 @@ describe("code limits", () => {
       assert.strictEqual(yield* sendCode(existing), 200);
     }).pipe(Effect.provide(testApp())),
   );
+
+  it.effect("invalid sends don't use up the global cap", () =>
+    Effect.gen(function* () {
+      const db = yield* Db;
+      yield* db
+        .insert(otpAttempt)
+        .values(
+          Array.from({ length: 99 }, (_, i) => ({
+            kind: "send" as const,
+            email: `new${i}@example.test`,
+            newAddress: true,
+          })),
+        )
+        .pipe(Effect.orDie);
+
+      assert.strictEqual(yield* sendCode("not-an-email"), 400);
+      assert.strictEqual(yield* sendCode("unknown@example.test", "email-verification"), 200);
+      assert.strictEqual(yield* sendCode("last@example.test"), 200);
+      assert.strictEqual(yield* sendCode("one-more@example.test"), 429);
+    }).pipe(Effect.provide(testApp())),
+  );
 });
 
 describe("sign-up", () => {
-  it.effect("keeps a valid name and replaces an unbounded one", () =>
+  it.effect("keeps a valid name, replaces an unbounded one, and stores no image", () =>
     Effect.gen(function* () {
-      yield* signIn("dana@example.test", undefined, "  Dana  ");
-      yield* signIn("huge@example.test", undefined, "x".repeat(100_000));
+      yield* signIn("dana@example.test", undefined, { name: "  Dana  " });
+      yield* signIn("huge@example.test", undefined, {
+        name: "x".repeat(100_000),
+        image: `data:image/png;base64,${"A".repeat(1_000_000)}`,
+      });
       yield* signIn("nameless@example.test");
       assert.strictEqual(yield* nameOf("dana@example.test"), "Dana");
       assert.strictEqual(yield* nameOf("huge@example.test"), "huge");
+      assert.isNull((yield* userRow("huge@example.test"))?.image);
       assert.strictEqual(yield* nameOf("nameless@example.test"), "nameless");
+    }).pipe(Effect.provide(testApp())),
+  );
+});
+
+describe("Better Auth's own endpoints", () => {
+  it.effect("refuse a signed-in user's update-user and the unused code checks", () =>
+    Effect.gen(function* () {
+      const email = "erin@example.test";
+      const headers = sessionHeaders(yield* signIn(email, undefined, { name: "Erin" }));
+      const update = yield* postAuth("/update-user", { name: "", image: "x" }, headers);
+      assert.strictEqual(update.status, 404);
+      assert.deepInclude(yield* userRow(email), { name: "Erin", image: null });
+      for (const path of ["/email-otp/check-verification-otp", "/email-otp/verify-email"]) {
+        const response = yield* postAuth(path, { email, type: "sign-in", otp: "000000" });
+        assert.strictEqual(response.status, 404, path);
+      }
     }).pipe(Effect.provide(testApp())),
   );
 });

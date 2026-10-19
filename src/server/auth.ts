@@ -2,6 +2,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { betterAuth } from "better-auth/minimal";
 import { emailOTP } from "better-auth/plugins/email-otp";
+import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { and, count, eq, gt, lt, sql } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Context, Effect, Layer, Option, Redacted, Schema } from "effect";
@@ -26,9 +27,9 @@ const limits = {
 const limitedPaths: Record<string, keyof typeof limits> = {
   "/email-otp/send-verification-otp": "send",
   "/sign-in/email-otp": "verify",
-  "/email-otp/verify-email": "verify",
-  "/email-otp/check-verification-otp": "verify",
 };
+// Looser than Better Auth's own check, so every address it accepts is counted.
+const looksLikeEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
 function makeAuth(db: NodePgDatabase, config: AuthConfig) {
   const usesFixedCode = (email: string) =>
@@ -45,20 +46,26 @@ function makeAuth(db: NodePgDatabase, config: AuthConfig) {
     database: drizzleAdapter(db, { provider: "pg", schema }),
     // Serverless instances share no memory, so the per-IP limits are counted in the database.
     rateLimit: { storage: "database" },
-    // No passwords and no email change: sign-in codes are the only codes issued.
+    // Sign-in codes are the only codes used: no passwords, no email change, no email verification.
+    // Users change their name through the app's own validated updateDisplayName.
     disabledPaths: [
       "/email-otp/request-password-reset",
       "/forget-password/email-otp",
       "/email-otp/reset-password",
       "/email-otp/request-email-change",
       "/email-otp/change-email",
+      "/email-otp/check-verification-otp",
+      "/email-otp/verify-email",
+      "/update-user",
     ],
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
         const kind = limitedPaths[ctx.path];
         const email: unknown = ctx.body?.email;
         if (!kind || typeof email !== "string" || usesFixedCode(email)) return;
-        if (!(await allowAttempt(db, kind, email.toLowerCase()))) {
+        // Only a sign-in code to a valid address can create an account.
+        const signUp = kind === "send" && ctx.body?.type === "sign-in" && looksLikeEmail(email);
+        if (!(await allowAttempt(db, kind, email.toLowerCase(), signUp))) {
           throw new APIError("TOO_MANY_REQUESTS", {
             message: "Too many attempts. Wait a few minutes and try again.",
           });
@@ -68,13 +75,15 @@ function makeAuth(db: NodePgDatabase, config: AuthConfig) {
     databaseHooks: {
       user: {
         create: {
-          // Sign-up takes any `name` from the request; keep it only if it is a valid display name.
+          // Sign-up takes any `name` and `image` from the request. Keep the name only if it is a
+          // valid display name; the app has no images.
           before: async (user) => ({
             data: {
               ...user,
               name: Schema.decodeUnknownOption(schema.DisplayName)(user.name).pipe(
                 Option.getOrElse(() => user.email.split("@")[0]!.slice(0, 50)),
               ),
+              image: null,
             },
           }),
         },
@@ -91,13 +100,21 @@ function makeAuth(db: NodePgDatabase, config: AuthConfig) {
           await sendOtpEmail(config, email, otp);
         },
       }),
+      // Last: the server's own getSession refreshes the session cookie, and this sends it.
+      tanstackStartCookies(),
     ],
   });
 }
 
-// Records the attempt and answers true, or answers false when a limit is reached. One lock
-// serializes the check and the insert, so concurrent requests can't overshoot.
-function allowAttempt(db: NodePgDatabase, kind: keyof typeof limits, email: string) {
+// Records the attempt and answers true, or answers false when a limit is reached. A `signUp` send
+// to an address with no account also counts toward the global cap. One lock serializes the check
+// and the insert, so concurrent requests can't overshoot.
+function allowAttempt(
+  db: NodePgDatabase,
+  kind: keyof typeof limits,
+  email: string,
+  signUp: boolean,
+) {
   const { otpAttempt, user } = schema;
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext('otp_attempt'))`);
@@ -120,7 +137,7 @@ function allowAttempt(db: NodePgDatabase, kind: keyof typeof limits, email: stri
     if (perAddress >= limits[kind].perAddress) return false;
 
     let newAddress = false;
-    if (kind === "send") {
+    if (signUp) {
       const [existing] = await tx.select({ id: user.id }).from(user).where(eq(user.email, email));
       newAddress = !existing;
       if (
@@ -159,7 +176,12 @@ export const layer = Layer.effect(
     const config = yield* authConfig;
     // Better Auth's adapter needs Promise-based Drizzle, so it gets its own node-postgres pool.
     const pool = yield* Effect.acquireRelease(
-      Effect.sync(() => new Pool({ connectionString: Redacted.value(url) })),
+      Effect.sync(() => {
+        const pool = new Pool({ connectionString: Redacted.value(url) });
+        // An idle connection's error (a dropped connection) would otherwise crash the process.
+        pool.on("error", (error) => console.error("Better Auth's database pool:", error.message));
+        return pool;
+      }),
       (pool) => Effect.promise(() => pool.end()),
     );
     return makeAuth(drizzle({ client: pool }), config);
