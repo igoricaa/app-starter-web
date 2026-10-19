@@ -8,6 +8,13 @@ export class Unauthenticated extends Schema.TaggedError<Unauthenticated>()("Unau
   }
 }
 
+// A server function's input that fails its schema: a malformed request, not a user's typing.
+export class InvalidInput extends Schema.TaggedError<InvalidInput>()("InvalidInput", {}) {
+  override get message() {
+    return "The request was invalid.";
+  }
+}
+
 export class InvalidDisplayName extends Schema.TaggedError<InvalidDisplayName>()(
   "InvalidDisplayName",
   {},
@@ -24,4 +31,4 @@ export class NotFound extends Schema.TaggedError<NotFound>()("NotFound", {}) {
   }
 }
 
-export type AppFailure = Unauthenticated | InvalidDisplayName | NotFound;
+export type AppFailure = Unauthenticated | InvalidInput | InvalidDisplayName | NotFound;

@@ -24,14 +24,18 @@ export const testApp = (env: Record<string, string> = {}) =>
     ),
   );
 
-// A browser's POST to Better Auth's handler.
-export const postAuth = (path: string, body: object) =>
+// A browser's POST to Better Auth's handler, signed out or with `headers`' session.
+export const postAuth = (path: string, body: object, headers?: Headers) =>
   Auth.Auth.use((auth) =>
     Effect.promise(() =>
       auth.handler(
         new Request(`${origin}/api/auth${path}`, {
           method: "POST",
-          headers: { "content-type": "application/json", origin },
+          headers: {
+            cookie: headers?.get("cookie") ?? "",
+            "content-type": "application/json",
+            origin,
+          },
           body: JSON.stringify(body),
         }),
       ),
@@ -39,8 +43,8 @@ export const postAuth = (path: string, body: object) =>
   );
 
 // Issues a sign-in code through the real generation hook (no mail), then signs in over HTTP with
-// `otp`, or with the issued code when `otp` is omitted.
-export const signIn = (email: string, otp?: string, name?: string) =>
+// `otp`, or with the issued code when `otp` is omitted. `signUp` adds fields to the request body.
+export const signIn = (email: string, otp?: string, signUp: object = {}) =>
   Effect.gen(function* () {
     const issued = yield* Auth.Auth.use((auth) =>
       Effect.promise(() =>
@@ -50,7 +54,7 @@ export const signIn = (email: string, otp?: string, name?: string) =>
         }),
       ),
     );
-    return yield* postAuth("/sign-in/email-otp", { email, otp: otp ?? issued, name });
+    return yield* postAuth("/sign-in/email-otp", { ...signUp, email, otp: otp ?? issued });
   });
 
 // The headers a browser sends after this sign-in response, or signed out without one.

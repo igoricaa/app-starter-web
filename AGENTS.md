@@ -105,7 +105,7 @@ Most changes need no doc change. Agents can read the code.
   - `_authed` redirects signed-out visitors on the server.
 - **Database:** Neon, through Vercel's Neon integration. The app uses the pooled `DATABASE_URL`; migrations use the direct `DATABASE_URL_UNPOOLED`.
 - **Deploys:** Vercel runs `scripts/vercel-build.sh` on every deploy.
-  - It refuses a production build from any branch but `main`, `TEST_OTP_CODE` in production, and a preview whose database is production's.
+  - It refuses a production build from any branch but `main`, `TEST_OTP_CODE` in production, and a preview whose database is production's or that has `RESEND_API_KEY` (`scripts/guard.ts`).
   - It migrates under an advisory lock, so concurrent deploys apply migrations one at a time; previews are then seeded; then it builds.
   - A preview gets its branch's own Neon database branch. Production uses the main one.
 

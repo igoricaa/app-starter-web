@@ -1,11 +1,14 @@
-// Applies drizzle/ to DATABASE_URL_UNPOOLED (Neon's direct URL), else DATABASE_URL.
+// Applies drizzle/ to DATABASE_URL_UNPOOLED, Neon's direct URL. The advisory lock belongs to the
+// session, which a pooler in transaction mode doesn't keep, so a pooled host is refused.
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
+import { databaseHost, isPooled } from "./guard";
 
-const url = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
-if (!url) throw new Error("Set DATABASE_URL.");
+const url = process.env.DATABASE_URL_UNPOOLED;
+if (!url) throw new Error("Set DATABASE_URL_UNPOOLED, the direct (unpooled) URL.");
+if (isPooled(databaseHost(url))) throw new Error("DATABASE_URL_UNPOOLED is a pooled host.");
 
 const client = new Client({ connectionString: url });
 await client.connect();
