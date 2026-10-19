@@ -16,6 +16,7 @@ jobs:
       group: e2e-${{ github.event.deployment.ref }}
       cancel-in-progress: true
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
