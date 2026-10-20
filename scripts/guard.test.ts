@@ -16,7 +16,12 @@ const previewEnv = (databaseUrl: string) => ({
 
 describe("the build guard", () => {
   it("lets a preview on its own branch through, in the shape Vercel's Neon integration sets", () => {
-    const env = { ...previewEnv(url(pooled(preview))), PGHOST: pooled(preview) };
+    // The integration also sets PGHOST and PGPASSWORD; pg ignores both for these URLs.
+    const env = {
+      ...previewEnv(url(pooled(preview))),
+      PGHOST: pooled(preview),
+      PGPASSWORD: "fake-password",
+    };
     assert.isUndefined(refusal(env));
     assert.isUndefined(refusal({ ...env, DATABASE_URL: url(pooled(preview), "?sslmode=require") }));
     assert.match(refusal({ ...env, RESEND_API_KEY: "re_123" })!, /RESEND_API_KEY/);
@@ -54,6 +59,58 @@ describe("the build guard", () => {
       refusal(previewEnv(url(pooled(production)))),
       "this preview's database is production's.",
     );
+  });
+
+  it("refuses a host off production's exact domain", () => {
+    for (const host of [
+      "ep-preview-456.extra.c-2.eu-central-1.aws.neon.tech",
+      "ep-preview-456-pooler.extra.c-2.eu-central-1.aws.neon.tech",
+      "ep-preview-456.c-3.eu-central-1.aws.neon.tech",
+      "ep-preview-456.eu-central-1.aws.neon.tech",
+    ]) {
+      assert.match(refusal(previewEnv(url(host)))!, /production's domain/, host);
+    }
+  });
+
+  it("refuses a URL whose TLS might not verify", () => {
+    for (const rest of [
+      "?sslmode=no-verify",
+      "?sslmode=disable",
+      "?sslmode=allow",
+      "?sslmode=prefer",
+      "?sslmode=verify-ca",
+      "?channel_binding=require",
+      "?sslmode=require&sslmode=no-verify",
+      "",
+    ]) {
+      assert.isDefined(refusal(previewEnv(url(pooled(preview), rest))), rest);
+    }
+    assert.isUndefined(refusal(previewEnv(url(pooled(preview), "?sslmode=verify-full"))));
+  });
+
+  it("refuses Neon's endpoint in the password, or no password (pg would read PGPASSWORD)", () => {
+    for (const password of [
+      "project=ep-prod-123;fake-secret",
+      "project=ep-prod-123-pooler;fake-secret",
+      "project%3Dep-prod-123%3Bfake-secret",
+      "PROJECT=ep-prod-123;fake-secret",
+      "",
+    ]) {
+      assert.isDefined(refusal(previewEnv(url(pooled(preview), query, password))), password);
+    }
+    const noPassword = `postgresql://neondb_owner@${pooled(preview)}/neondb${query}`;
+    const env = { ...previewEnv(noPassword), PGPASSWORD: "endpoint=ep-prod-123;fake-secret" };
+    assert.isDefined(refusal(env));
+  });
+
+  it("refuses the reviewer's combined URL", () => {
+    const crafted = url(
+      "ep-preview-456.extra.c-2.eu-central-1.aws.neon.tech",
+      "?sslmode=no-verify",
+      "project=ep-prod-123;fake-secret",
+    );
+    assert.isDefined(refusal(previewEnv(crafted)));
+    assert.isDefined(migrationRefusal({ DATABASE_URL_UNPOOLED: crafted }));
   });
 
   it("refuses a preview with PGOPTIONS or PGHOSTADDR, or no Neon production host", () => {
@@ -96,6 +153,10 @@ describe("the migration guard", () => {
       "postgresql://u:p@/db",
       url("", `?host=${preview}`),
       url(preview, "?options=endpoint%3Dep-prod-123"),
+      url(preview, "?sslmode=no-verify"),
+      url(preview, ""),
+      url(preview, query, "project=ep-prod-123;fake-secret"),
+      url(preview, query, ""),
       url("localhost", `?host=${pooled(preview)}`),
       "not a url",
     ]) {

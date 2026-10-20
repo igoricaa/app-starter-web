@@ -1,9 +1,11 @@
 // Run by scripts/vercel-build.sh before anything touches a database. A preview must never migrate
 // or use production's database. Neon routes a connection by its endpoint id, which can ride in the
-// hostname, the password or an `options` parameter, so a preview's URLs must be plain Neon URLs
-// whose endpoint isn't production's (PRODUCTION_DATABASE_HOST: not a secret, set for Preview in
-// Vercel). A new Vercel project's first Git deployment goes to production whatever its branch, so
-// production builds only from main.
+// hostname, the password (`endpoint=` or `project=`) or an `options` parameter, so a preview's URLs
+// must be plain Neon URLs on production's exact domain whose endpoint isn't production's
+// (PRODUCTION_DATABASE_HOST: not a secret, set for Preview in Vercel). This guards against
+// misconfiguration, not against someone who can already set Vercel's variables. A new Vercel
+// project's first Git deployment goes to production whatever its branch, so production builds
+// only from main.
 import { fileURLToPath } from "node:url";
 import { parse } from "pg-connection-string";
 
@@ -20,16 +22,26 @@ export function neonEndpoint(host: string) {
 }
 
 // The host a postgres URL connects to, when the URL alone decides it: the only query parameters
-// are sslmode and channel_binding, nothing in it says `endpoint=`, a Neon host is on Neon's port,
-// and pg's own parser reads the same host. Undefined otherwise, including when it doesn't parse.
+// are sslmode and channel_binding, nothing in it says `endpoint=` or `project=`, pg's own parser
+// reads the same host, and a remote host is on Neon's port with a password of its own (pg reads
+// PGPASSWORD only when the URL has none) and one sslmode that verifies the certificate (pg 8
+// verifies for require; without sslmode it doesn't use TLS). Undefined otherwise, including when
+// it doesn't parse. localhost and 127.0.0.1 serve dev and tests.
 export function plainHost(url: string) {
   try {
-    const { protocol, hostname, port, searchParams } = new URL(url);
+    const { protocol, hostname, port, password, searchParams } = new URL(url);
+    const decoded = decodeURIComponent(url).toLowerCase();
+    const sslmode = searchParams.getAll("sslmode");
     const plain =
       (protocol === "postgresql:" || protocol === "postgres:") &&
       [...searchParams.keys()].every((key) => key === "sslmode" || key === "channel_binding") &&
-      !decodeURIComponent(url).toLowerCase().includes("endpoint=") &&
-      (port === "" || port === "5432" || localHosts.includes(hostname)) &&
+      !decoded.includes("endpoint=") &&
+      !decoded.includes("project=") &&
+      (localHosts.includes(hostname) ||
+        ((port === "" || port === "5432") &&
+          password !== "" &&
+          sslmode.length === 1 &&
+          (sslmode[0] === "require" || sslmode[0] === "verify-full"))) &&
       parse(url).host === hostname;
     return plain && hostname ? hostname : undefined;
   } catch {
@@ -72,9 +84,14 @@ export function refusal(env: Env) {
       if (override) return `${override} is set.`;
       const production = neonEndpoint(env.PRODUCTION_DATABASE_HOST ?? "");
       if (!production) return "PRODUCTION_DATABASE_HOST is not a Neon host.";
+      // Exactly <endpoint id>[-pooler].<production's host minus its first label>.
+      const domain = env.PRODUCTION_DATABASE_HOST!.slice(
+        env.PRODUCTION_DATABASE_HOST!.indexOf("."),
+      );
       for (const url of [env.DATABASE_URL, env.DATABASE_URL_UNPOOLED]) {
-        const endpoint = neonEndpoint(plainHost(url) ?? "");
-        if (!endpoint) return "a database URL is not a plain Neon URL.";
+        const host = plainHost(url) ?? "";
+        const endpoint = host.slice(host.indexOf(".")) === domain ? neonEndpoint(host) : undefined;
+        if (!endpoint) return "a database URL is not a plain Neon URL on production's domain.";
         if (endpoint.id === production.id) return "this preview's database is production's.";
       }
       return;
