@@ -78,7 +78,7 @@ export function refusal(env: Env) {
       if (env.TEST_OTP_CODE) return "TEST_OTP_CODE is set in production.";
       return;
     case "preview": {
-      // Preview databases copy production's users; previews sign in with the seeded accounts.
+      // Previews sign in with the seeded accounts, never real mail.
       if (env.RESEND_API_KEY) return "RESEND_API_KEY is set on a preview.";
       const override = pgOverride(env);
       if (override) return `${override} is set.`;
