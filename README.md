@@ -17,3 +17,5 @@ New apps are created from this template with `/app-setup new <name> web`, the us
 - [`AGENTS.md`](AGENTS.md): how to work here. Read it first.
 - [`docs/internals/effect-services.md`](docs/internals/effect-services.md): Effect, database and auth rules.
 - Live: https://app-starter-web.vercel.app
+
+PRs labelled `coderabbit` get a CodeRabbit review; `/build` adds the label to important, high-stakes or bigger PRs.
