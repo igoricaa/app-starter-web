@@ -9,7 +9,7 @@ New apps are created from this template with `/app-setup new <name> web`, the us
 - The account page as the reference slice: `src/server/AccountService.ts`, its tests on real PostgreSQL, and `src/routes/_authed/account.tsx`.
 - Sign-in with email codes, a seeded test account, and one Playwright test of the flow.
 - CI: `verify` on every PR and on `main`; `e2e` against each Vercel preview, which has its own Neon database branch.
-- `scripts/vercel-build.sh`, the only path to production: merging to `main`.
+- `scripts/vercel-build.sh`, the only path to production: merging to `main`. A docs-only commit skips the production build.
 - The kit's agent files: `AGENTS.md`, the skills in `.agents/skills/`, `docs/agents/` and `.coderabbit.yaml`.
 
 ## Links
