@@ -36,7 +36,7 @@ Committed pieces are done. Uncommitted pieces get a fresh review.
 
 - **Worktrees.** You create one per piece:
   1. `git worktree add ../<app>-wt/<slug> -b <type>/<slug> main`, with `<type>` one of `feat`, `fix` or `chore`;
-  2. run the repo's own worktree setup there: the command in `t3.json`, with `T3CODE_PROJECT_ROOT` set to the main checkout. It brings in `.env.local` (and `.repos`) and the dependencies.
+  2. run the repo's own worktree setup there: the command in `t3.json`. It brings in `.env.local` (and `.repos`) and the dependencies.
 - **Dispatch.** One builder per piece. Give it the worktree path, and the model and effort from the routing table. Pin both on every dispatch.
   - Claude builders: the Agent tool, working in that path.
   - Codex models: T3 `delegate_task`, told the path.
