@@ -8,7 +8,7 @@ Specs and tickets live in Linear, in the workspace, team and project named in `A
 
 - **A spec** is a parent issue. `/to-spec` writes it.
 - **A ticket** is a sub-issue of its spec (`parentId`). `/to-tickets` writes tickets in dependency order, so blocking links can name real identifiers.
-- **Blocking:** use Linear's native `blockedBy` relation. A ticket is unblocked when every blocker is Done.
+- **Blocking:** use Linear's native `blockedBy` relation. A ticket is unblocked when every blocker is Done. Within a `/build` batch, a reviewed and committed prerequisite unblocks a dependent piece's execution; Done still means merged.
 - **What a ticket holds:**
   - what to build, as end-to-end behaviour;
   - acceptance criteria;

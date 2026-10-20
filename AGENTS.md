@@ -20,7 +20,7 @@ Treat this file as good defaults, not hard rules. If a rule fights the task in f
 3. **Breaking open tabs.** Users keep the old frontend open after a deploy, so a server function's input and return value change only additively. Removals and renames go in a later PR.
 4. **Narrowing data in one step.** It takes three PRs: widen the schema, backfill, then narrow, and only after the backfill has completed. Igor takes a backup first.
 5. **Editing an applied migration.** Change `src/server/schema.ts`, run `bun run db:generate`, and commit the new folder in `drizzle/`.
-6. **Using dev from a worktree.** Worktrees share the Neon `dev` branch through `.env.local`. Builders never migrate it or run the dev server; they test with `bun run test`, which starts its own PostgreSQL. Only `/build`'s integration check runs `bun run dev` in a worktree, and nothing migrates `dev` for an unmerged migration (see "Dev servers").
+6. **Using dev from a worktree.** Worktrees share the Neon `dev` branch through `.env.local`. Builders never migrate it or run the dev server; they test with `bun run test`, which starts its own PostgreSQL. Nothing migrates `dev` for an unmerged migration; `/build`'s browser walk runs on the PR's preview.
 
 ## Hit every surface
 
@@ -37,14 +37,13 @@ The most common defect is a change that works on the path you tested and is miss
 ## Dev servers
 
 - `bun run setup` installs dependencies and checks out Effect's source in `.repos/effect`. New worktrees run it from `t3.json`, and get `.env.local` and `.repos` linked from the main checkout.
-- `bun run dev` runs Vite on port 3000, against the Neon `dev` branch in `.env.local`. Only Igor or the integration check runs it. It deletes `src/routeTree.gen.ts` first, to work around a nitro beta bug (see `docs/internals/effect-services.md`).
-- **A batch with a migration:** the integration check runs against a temporary Neon branch of `dev`, never `dev` itself. It creates one with `neonctl branches create --parent dev --name <slug> --project-id "$(gh variable get NEON_PROJECT_ID)"`, replaces the worktree's linked `.env.local` with a copy holding that branch's `DATABASE_URL` and `DATABASE_URL_UNPOOLED`, runs `bun run db:migrate` and `bun run seed`, then `bun run dev`. It deletes the branch afterwards.
+- `bun run dev` runs Vite on port 3000, against the Neon `dev` branch in `.env.local`. Only Igor runs it. It deletes `src/routeTree.gen.ts` first, to work around a nitro beta bug (see `docs/internals/effect-services.md`).
 - Stop what you started, by the PID you captured. Never kill by name or pattern.
 
 ## Test data
 
 - `bun run seed` creates the seeded accounts (see `src/server/auth.ts`). It refuses wherever `TEST_OTP_CODE` is unset, which includes production.
-- Sign in as a seeded account with the code in `TEST_OTP_CODE`. It works only in dev and previews, and only for seeded addresses. Use it without printing it: `TEST_OTP_CODE="$(sed -n 's/^TEST_OTP_CODE=//p' .env.local)" bunx playwright …`.
+- Sign in as a seeded account with the code in `TEST_OTP_CODE`. It works only in dev and previews, and only for seeded addresses. Previews get the same value as dev, so the one in `.env.local` works on both. Use it without printing it: `TEST_OTP_CODE="$(sed -n 's/^TEST_OTP_CODE=//p' .env.local)" bunx playwright …`.
 - Each branch's previews share one Neon database branch, migrated and seeded on every deploy.
 
 ## Verifying
@@ -54,7 +53,7 @@ The most common defect is a change that works on the path you tested and is miss
 - **Backend changes** ship with focused tests at the service boundary: who may call it, whose data it touches, and the error codes. Copy `src/server/AccountService.test.ts`.
 - **Test meaningful behaviour.** No static-render tests, no tests that mirror the implementation, no snapshots.
 - **End-to-end:** one Playwright test (sign-in). Add one only for a flow whose breaking would really hurt.
-- **No browsers** unless `/build`'s integration check or Igor asks.
+- **Browsers:** the browser walk runs on the preview (see `/build`); otherwise only when Igor asks.
 
 ## Pull requests
 
@@ -85,6 +84,7 @@ Most changes need no doc change. Agents can read the code.
   - `_authed` redirects signed-out visitors on the server.
 - **Database:** Neon, through Vercel's Neon integration. The app uses the pooled `DATABASE_URL`; migrations use the direct `DATABASE_URL_UNPOOLED`.
 - **Deploys:** Vercel runs `scripts/vercel-build.sh` on every deploy.
+  - A push to `main` that changes only `*.md`, `docs/`, `.agents/` or `.claude/` skips the production build (`ignoreCommand` in `vercel.json`). Previews always build.
   - It refuses a production build from any branch but `main`, `TEST_OTP_CODE` in production, and a preview whose database is production's or that has `RESEND_API_KEY` (`scripts/guard.ts`).
   - It migrates under an advisory lock, so concurrent deploys apply migrations one at a time; previews are then seeded; then it builds.
   - A preview gets its branch's own Neon database branch, deleted when its PR closes (`.github/workflows/cleanup.yml`). Production uses the main one.
@@ -130,6 +130,7 @@ Igor starts every session, and each one ends by naming the next command.
   7. `/to-tickets`.
   8. Before `/build`, commit `GLOSSARY.md`, ADRs and `docs/decisions.md` straight to `main` (docs only), so builders' worktrees see them.
 - **Build:** `/build`, a fresh session per batch. Merging deploys production.
+- **A small, clear feature** (one piece, no new data model, not high-stakes) skips Shape: `/build <what>`. The coordinator writes one Linear ticket (acceptance criteria, test seam) and builds it. Everything else goes through Shape and both its approval rounds (the outline, then the spec and tickets).
 - **Tiny tweaks** (copy, spacing, a label) go straight to `main`, with no PR and no review.
 
 ## Routing

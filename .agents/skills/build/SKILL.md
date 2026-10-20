@@ -23,7 +23,8 @@ Committed pieces are done. Uncommitted pieces get a fresh review.
 ## 1. Group
 
 - First update `main`: `git switch main && git pull --ff-only`.
-- Turn the tickets into **pieces**: coherent work for one builder, covering one or more tickets.
+- **A small, clear feature** (one piece, no new data model, not high-stakes) skips Shape: write one Linear ticket (acceptance criteria, test seam), then build it.
+- Turn the tickets into **pieces**: coherent work for one builder, covering one or more tickets. Short, related tickets (shared files, sequential, small) are one piece: one builder, one worktree, one review. Ticket count doesn't set agent count.
 - Group the pieces into **PR batches**.
 - **High-stakes work** (money, authorization and tenancy, migrations and deletion, concurrency, billing webhooks) gets its own PR.
 - **So does every data change:** a backfill, a migration, narrowing, a delete, or changing what an existing field means. Adding an optional field isn't a data change.
@@ -41,7 +42,7 @@ Committed pieces are done. Uncommitted pieces get a fresh review.
   - Claude builders: the Agent tool, working in that path.
   - Codex models: T3 `delegate_task`, told the path.
   - A piece with both backend and UI goes to the backend builder, unless it's mostly screens.
-- **Parallel or serial.** Builders run in parallel only when they share no files or resources. Pieces that touch the schema file run one after another.
+- **Parallel or serial.** Builders run in parallel only when they share no files or resources. The batch's schema changes go in its first piece; the other pieces branch from it once it's committed, and run in parallel.
 - **Dependent pieces.** A piece with a blocking edge starts only after its prerequisite is committed, and its branch comes from the prerequisite's branch instead of `main`.
 
 **The builder brief** (keep it about this size):
@@ -77,7 +78,8 @@ Look for, in order: correctness and security; the acceptance criteria; callers t
 missed surfaces and reverse states; over-engineering; a missing test where money, access or data could break.
 High-stakes backend: every public function checks identity (and tenant through the resource), server-only
 code is internal, every argument is validated, returns are narrow.
-Don't flag: style, untouched old code (you may follow unchanged callers to show a regression), speculation.
+Don't flag: style, untouched old code (you may follow unchanged callers to show a regression), speculation,
+attacks that need access which already allows the harm (deploy keys, Vercel or Convex env vars, dashboards).
 Output: ranked findings, each with a concrete failing case, then one word: CLEAN or FINDINGS.
 If you can't read the target, answer BLOCKED.
 ```
@@ -90,7 +92,7 @@ If you can't read the target, answer BLOCKED.
 
 **Fixes.**
 - The builder that wrote the code fixes it; continue the same agent.
-- A re-look happens only when a fix changed behaviour, and it goes to the reviewer that raised the finding.
+- A re-look happens only when a fix changed behaviour, and it goes to the reviewer that raised the finding. It checks the original finding and the fix's consequences; it doesn't restart the audit.
 - When fixes stop converging, label the ticket `needs-decision`, tell the owner, and keep going with the rest of the batch.
 
 ## 4. Commit
@@ -100,18 +102,16 @@ You commit, in the worktree, with the Linear key in the message (`feat(account):
 ## 5. Integration check
 
 1. **The batch branch** is the first piece's branch. In its worktree, merge the other pieces' branches, then run typecheck.
-2. Walk the batch's acceptance criteria.
-   - **UI:** an Opus high subagent clicks through the changed flows in a browser, once per batch, in the batch's worktree.
-     - It starts the app as `AGENTS.md` "Dev servers" says, against the dev backend with the seed data, and reads the test code as "Test data" says, never printing it. It stops what it started by the PIDs it captured.
-     - **Custom profiles, a batch with a migration:** it walks against a temporary Neon branch of `dev` (`neonctl branches create --parent dev --name <slug> --project-id "$(gh variable get NEON_PROJECT_ID)"`), migrated and seeded, with the worktree's linked `.env.local` (multi: `apps/api/.env.local`) replaced by a copy holding that branch's URLs. It deletes the branch afterwards. Never migrate the shared `dev`.
-     - **It checks:** the frame at 1440 and 390, long content, both themes if any, empty, loading, error and permission states, keyboard and focus, accessible names, and errors tied to their fields. It reports what it actually checked.
-   - **Backend flows** are proven by their seam tests.
+2. Verify the backend flows through their seam tests.
 3. Code that resolves an integration conflict gets reviewed.
 4. Run the full build and tests locally only when CI is down.
 
 ## 6. PR
 
 - **Opening it:** push the batch branch, then `gh pr create` from it, with a conventional, plain-language title that includes the Linear key. Link the PR with T3 `link_pull_request` when it's available.
+- **The browser walk** (UI batches, once per batch) runs while CI does: an Opus high subagent on the PR's preview, with its own seeded backend. It signs in as `AGENTS.md` "Test data" says, never printing the code. Its first URL adds `?x-vercel-protection-bypass=<the project's automation bypass (multi: the web's), from GET /v9/projects/<project>>&x-vercel-set-bypass-cookie=true`.
+  - **It checks** the changed screens at 1440 and 390 against the frame, plus the states, themes and keyboard paths the change can reach. It reports what it checked, and saves after-screenshots of the changed screens for the body.
+  - **The full walk** (UI foundation, navigation, shared components, new interaction patterns, auth, money, permissions) adds every state (empty, loading, error, permission), both themes, long content, focus, accessible names and errors tied to their fields.
 - **The body:**
   - the problem in a sentence or two, and the fix;
   - before/after screenshots when the look changed, never committed. Host them in a secret gist: `gh gist create`, then clone it and push the images with `-c credential.helper='!gh auth git-credential'`. Link the raw URLs;
@@ -128,7 +128,7 @@ You commit, in the worktree, with the Linear key in the message (`feat(account):
 
 ## 7. Merge (this deploys production)
 
-- **User-visible changes:** post the preview link and what to look at, wait for the owner's OK, then merge.
+- **User-visible changes:** once the walk and CI are done, post the preview link and what to look at, wait for the owner's OK, then merge.
 - **Backend-only changes:** merge once CI is green.
 - **High-stakes and data PRs:** the owner merges.
 - **Data changes:**
@@ -141,12 +141,7 @@ You commit, in the worktree, with the Linear key in the message (`feat(account):
   1. `gh pr merge <n> --squash --delete-branch --subject "<PR title> (#<n>)" --body "Co-Authored-By: <the builder model's attribution line>"`. It also removes the batch branch's worktree;
   2. remove every other piece's worktree and branch: `git worktree remove <path> && git branch -D <branch>`;
   3. `git pull --ff-only`.
-- **After merge:** one quick production check:
-  - the deployment for the merge SHA is Ready;
-  - `/sign-in` and `/api/auth/ok` return 200;
-  - the push CI run on `main` passed.
-
-  The feature itself was proven on the preview.
+- **After merge:** run the production check as one background command and report it when it arrives: the merge SHA's deployment is Ready, and `/sign-in` and `/api/auth/ok` return 200. Don't wait for `main`'s push CI; it repeats the PR's verify. The feature was proven on the preview.
 
 ## 8. Stop
 
