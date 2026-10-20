@@ -64,6 +64,16 @@ Write a **Design** section into the Linear spec:
 - shadow and motion notes;
 - open questions.
 
+**On a fresh app** (no `docs/internals/web-ui.md`), the Design section names **the UI foundation as the first ticket** (Opus high). It holds:
+1. every component on the sheet, restyled through tokens and variants;
+2. the app patterns, as components;
+3. the app shell and the data hooks;
+4. `docs/internals/web-ui.md`: the Direction (at most 10 lines), the variant rules, the sizing rule, and the reference screen's name;
+5. shadcn lint as errors;
+6. the dev-only `/_system` preview page;
+7. one reference screen;
+8. one contrast check. Every snap is listed once in the PR.
+
 End by naming the next command, usually `/to-tickets <spec>`. Each screen ticket names its frame.
 
 ## Mobbin (only when the owner asks)

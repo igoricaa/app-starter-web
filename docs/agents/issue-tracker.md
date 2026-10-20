@@ -1,6 +1,8 @@
 # Issue tracker: Linear
 
-Specs and tickets live in Linear, in the team and project named in `AGENTS.md` (Agent skills → Issue tracker). Use the Linear MCP tools (`save_issue`, `get_issue`, `list_issues`, `save_comment`, `list_issue_labels`, `create_issue_label`).
+Specs and tickets live in Linear, in the workspace, team and project named in `AGENTS.md` (Agent skills → Issue tracker), on one line: Linear (MCP `<server>`), team `TEAM_KEY`, project `PROJECT_NAME`. Use that MCP server's tools (`save_issue`, `get_issue`, `list_comments`, `list_issues`, `save_comment`, `list_issue_labels`, `create_issue_label`, `save_project`).
+
+**If `AGENTS.md` still says `TEAM_KEY`,** ask the owner which Linear workspace (MCP server) and team before the first Linear write. Then create the project and the labels below, fill the placeholders, and commit straight to `main`.
 
 ## Conventions
 
@@ -14,7 +16,7 @@ Specs and tickets live in Linear, in the team and project named in `AGENTS.md` (
   - `Design:` the frame, when it has one.
 
   Never models, efforts, tiers or review classes. Those come from the routing table in `AGENTS.md`.
-- **Read an issue:** `get_issue`, with its comments, when a skill says "fetch the relevant ticket".
+- **Read an issue:** `get_issue` plus `list_comments` (follow `cursor` while `hasNextPage`), when a skill says "fetch the relevant ticket". Add `includeRelations` when reading blockers.
 - **Publish:** `save_issue` creates the issue, when a skill says "publish to the issue tracker".
 - **States:**
   - Todo;
@@ -36,7 +38,7 @@ Specs and tickets live in Linear, in the team and project named in `AGENTS.md` (
 
 Used by `/wayfinder`.
 
-- **The map** is one issue labelled `wayfinder:map`. It holds the Notes / Decisions so far / Fog body.
+- **The map** is one issue labelled `wayfinder:map`. Its body has the wayfinder's sections: Destination, Notes, Decisions so far, Not yet specified, Out of scope.
 - **A child ticket** is a sub-issue of the map, labelled `wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling` or `wayfinder:task`.
 - **Blocking** uses the native `blockedBy` relation.
 - **The frontier query:** list the map's open sub-issues, then drop any that has an open blocker or an assignee. The first in map order wins.
