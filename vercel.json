@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "bash scripts/vercel-build.sh",
-  "ignoreCommand": "if [ \"$VERCEL_ENV\" = production ] && git rev-parse -q --verify HEAD^ >/dev/null && git diff --quiet HEAD^ HEAD -- ':(top)' ':(top,exclude)*.md' ':(top,exclude)docs/' ':(top,exclude).agents/' ':(top,exclude).claude/'; then exit 0; else exit 1; fi",
+  "ignoreCommand": "p=$VERCEL_GIT_PREVIOUS_SHA; if [ \"$VERCEL_ENV\" = production ] && [ -n \"$p\" ] && git cat-file -e \"$p^{commit}\" 2>/dev/null && git diff --quiet \"$p\" HEAD -- ':/' ':/!*.md' ':/!docs/' ':/!.agents/' ':/!.claude/'; then exit 0; else exit 1; fi",
   "regions": ["fra1"]
 }
