@@ -1,12 +1,13 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["eslint", "typescript", "unicorn", "oxc", "react", "import"],
-  "jsPlugins": ["@shadcn/lint"],
+  "jsPlugins": ["@shadcn/lint", "./scripts/lint/no-em-dash-copy.ts"],
   "categories": {
     "correctness": "error"
   },
   "ignorePatterns": ["src/routeTree.gen.ts", ".repos/**", ".agents/**", ".claude/**"],
   "rules": {
+    "app/no-em-dash-copy": "error",
     "shadcn/no-restyle": "error",
     "shadcn/no-raw-colors": "error",
     "shadcn/no-arbitrary-values": "error",
