@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// The Vercel protection bypass is added in tests/e2e/fixtures.ts, scoped to the app's origin.
+// tests/e2e/fixtures.ts gets past Vercel protection with a host-only cookie.
 export default defineConfig({
   testDir: "tests/e2e",
   forbidOnly: Boolean(process.env.CI),

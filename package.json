@@ -41,6 +41,7 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@e2e-dev/web": "^0.15.4",
     "@effect/vitest": "4.0.5",
     "@oxlint/plugins": "^1.90.0",
     "@playwright/test": "^1.64.1",
@@ -51,6 +52,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "drizzle-kit": "1.0.0-rc.5-5935859",
+    "e2e": "^0.22.0",
     "knip": "^6.42.1",
     "oxfmt": "^0.74.0",
     "oxlint": "^1.89.0",
