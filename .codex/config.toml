@@ -1,0 +1,4 @@
+[mcp_servers.e2e]
+command = "bunx"
+args = ["e2e", "mcp"]
+env = { E2E_TELEMETRY_DISABLED = "1" }
