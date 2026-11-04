@@ -20,6 +20,7 @@ if [[ $url != http://localhost* ]]; then
 fi
 
 umask 077
+rm -f .env.e2e # a new file gets mode 600; an existing one would keep its mode
 printf 'APP_URL=%s\nVERCEL_AUTOMATION_BYPASS_SECRET=%s\nTEST_OTP_CODE=%s\nE2E_TELEMETRY_DISABLED=1\n' \
   "$url" "$bypass" "$code" >.env.e2e
 echo "Wrote .env.e2e for $url"

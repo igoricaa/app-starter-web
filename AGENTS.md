@@ -53,7 +53,7 @@ The most common defect is a change that works on the path you tested and is miss
 - **Backend changes** ship with focused tests at the service boundary: who may call it, whose data it touches, and the error codes. Copy `src/server/AccountService.test.ts`.
 - **Test meaningful behaviour.** No static-render tests, no tests that mirror the implementation, no snapshots.
 - **End-to-end:** one Playwright test (sign-in). Add one only for a flow whose breaking would really hurt.
-- **Browsers:** the browser walk runs on the preview through `e2e mcp` (see `/build` and `.agents/skills/e2e`); otherwise only when Igor asks. `bash scripts/e2e-env.sh <url>` writes the ignored `.env.e2e` it reads; the walk types the code as the `sign-in-code` secret and signs in at most once per target (3 codes per address per 10 minutes).
+- **Browsers:** the browser walk runs on the preview through `e2e mcp` (see `/build` and `.agents/skills/e2e`); otherwise only when Igor asks. `bash scripts/e2e-env.sh <url>` writes the ignored `.env.e2e` it reads. Each session opens with `tests/open.e2e.ts`, which gets past Vercel protection; the walk types the code as the `sign-in-code` secret. Sign-ins as the seeded account must not overlap, so sessions sign in one at a time.
 
 ## Pull requests
 

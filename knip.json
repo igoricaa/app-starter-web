@@ -1,5 +1,11 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["src/components/ui/*.tsx", "src/lib/utils.ts", "scripts/*.ts", "e2e.config.ts"],
+  "entry": [
+    "src/components/ui/*.tsx",
+    "src/lib/utils.ts",
+    "scripts/*.ts",
+    "e2e.config.ts",
+    "tests/*.e2e.ts"
+  ],
   "project": ["**", "!.agents/**"]
 }
